@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch）
 // @namespace    VFoch Network
-// @version      1.0.0
+// @version      1.0.1
 // @description  任务流程控制：开局受伤一次、关闭碰撞、自动拾取空投并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -70,7 +70,6 @@
     pickupTarget: null,
     autoPickupAnnounced: false,
     autoFinishTriggered: false,
-    finishTimer: null,
     panel: null,
     shadow: null,
     elements: null,
@@ -146,7 +145,6 @@
 
   function prepareRound(scene) {
     if (runtime.roundScene === scene && runtime.phase !== 'waiting') return;
-    if (runtime.finishTimer) pageWindow.clearTimeout(runtime.finishTimer);
     runtime.roundScene = scene;
     runtime.phase = 'opening-hit';
     runtime.openingHealth = getHealth(scene) || 3;
@@ -154,7 +152,6 @@
     runtime.pickupTarget = null;
     runtime.autoPickupAnnounced = false;
     runtime.autoFinishTriggered = false;
-    runtime.finishTimer = null;
     control.collisionDisabled = false;
     applyCollisionMode();
     console.info('[VFoch Paradrop Task] 回合开始：已开启 NPC 碰撞，等待损失 1 点生命');
@@ -250,15 +247,8 @@
     runtime.pickupTarget = null;
     control.collisionDisabled = false;
     applyCollisionMode();
-    console.info(`[VFoch Paradrop Task] 达到 ${control.autoFinishScore} 分，已开启碰撞并开始结算`);
+    console.info(`[VFoch Paradrop Task] 达到 ${control.autoFinishScore} 分，已开启碰撞，等待自然触碰死亡`);
     syncPanel();
-
-    runtime.finishTimer = pageWindow.setTimeout(() => {
-      runtime.finishTimer = null;
-      if (runtime.scene === scene && !scene.isGameOver && typeof scene.handleGameOver === 'function') {
-        scene.handleGameOver('LEVEL6_TIME_UP');
-      }
-    }, 100);
   }
 
   function runTaskCycle() {
@@ -363,8 +353,6 @@
     runtime.pickupTarget = null;
     runtime.autoPickupAnnounced = false;
     runtime.autoFinishTriggered = false;
-    if (runtime.finishTimer) pageWindow.clearTimeout(runtime.finishTimer);
-    runtime.finishTimer = null;
     installArrayPushHook();
     syncPanel();
   }
@@ -400,7 +388,7 @@
       case 'opening-hit': return '等待开局受伤';
       case 'protected': return '碰撞保护中';
       case 'manual-collision': return '手动开启碰撞';
-      case 'finishing': return '正在结算';
+      case 'finishing': return '等待自然触碰死亡';
       default: return '等待游戏场景';
     }
   }
@@ -539,7 +527,6 @@
 
   pageWindow.addEventListener('pagehide', () => {
     pageWindow.clearInterval(monitorId);
-    if (runtime.finishTimer) pageWindow.clearTimeout(runtime.finishTimer);
     restoreArrayPush();
   }, { once: true });
 })();
