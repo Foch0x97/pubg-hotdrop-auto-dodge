@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         PUBG 热点空投小游戏 - 自动躲避（VFoch）
+// @name         PUBG 热点空投小游戏
 // @namespace    VFoch Network
 // @version      2.4.0
 // @description  读取 Phaser 游戏对象，预测 NPC、空投和红区，自动移动与跳跃
