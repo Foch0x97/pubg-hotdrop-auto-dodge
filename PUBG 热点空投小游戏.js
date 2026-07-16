@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PUBG 热点空投小游戏
+// @name         PUBG 热点空投小游戏 - 自动躲避（VFoch）
 // @namespace    VFoch Network
-// @version      2.3.0
+// @version      2.4.0
 // @description  读取 Phaser 游戏对象，预测 NPC、空投和红区，自动移动与跳跃
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -17,13 +17,16 @@
   const CONFIG = {
     enabled: true,
     debugOverlay: true,
-    candidateStep: 32,
+    candidateStep: 28,
     edgeMargin: 52,
-    directionDeadZone: 18,
+    directionDeadZone: 16,
+    targetReplanMs: 70,
+    targetHoldMs: 180,
+    targetSwitchPenalty: 26,
     jumpCooldownMs: 150,
-    jumpPredictionSeconds: 1.05,
-    jumpPredictionStepSeconds: 0.035,
-    predictionSeconds: 1.45,
+    jumpPredictionSeconds: 1.18,
+    jumpPredictionStepSeconds: 0.04,
+    predictionSeconds: 1.7,
     redZoneSafetyMargin: 38,
   };
 
@@ -35,6 +38,9 @@
     targetX: 800,
     targetRisk: 0,
     currentRisk: 0,
+    lastPlanAt: 0,
+    lastTargetAt: 0,
+    cachedTarget: null,
     lastJumpAt: 0,
     lastJumpLabel: '',
     lastJumpLabelUntil: 0,
@@ -60,7 +66,7 @@
     if (runtime.panel || !document.documentElement) return;
     const panel = document.createElement('div');
     panel.innerHTML = `
-      <div style="font-weight:800;color:#ffd138">VFoch Auto Dodge 2.0</div>
+      <div style="font-weight:800;color:#ffd138">VFoch Auto Dodge 2.4</div>
       <div class="vf-status" style="margin-top:4px;color:#80d8ff">等待小游戏运行时…</div>
       <div style="margin-top:5px;color:#aaa">F8 开关　F9 重新捕获</div>
     `;
@@ -383,10 +389,12 @@
     if (signature !== runtime.redZoneSignature) {
       runtime.redZoneSignature = signature;
       runtime.redZoneTarget = null;
+      runtime.cachedTarget = null;
     }
 
     if (playerInRedZone || oldTargetInRedZone) {
       runtime.evacuatingRedZone = true;
+      runtime.cachedTarget = null;
 
       if (
         runtime.redZoneTarget === null
@@ -413,6 +421,19 @@
 
     runtime.evacuatingRedZone = false;
     runtime.redZoneTarget = null;
+    const now = performance.now();
+
+    // 每帧重算会让目标在相邻安全格之间来回切换。短周期缓存不影响预判，
+    // 但能让角色真正完成一次有意义的横移。
+    if (
+      runtime.cachedTarget
+      && now - runtime.lastPlanAt < CONFIG.targetReplanMs
+      && !isInsideRedZone(playerX, intervals)
+      && !isInsideRedZone(runtime.cachedTarget.x, intervals)
+    ) {
+      return runtime.cachedTarget;
+    }
+
     const currentRisk = riskAt(playerX, scene, items, playerY, speedMultiplier);
     const candidates = [];
 
@@ -421,23 +442,51 @@
       x <= width - CONFIG.edgeMargin;
       x += CONFIG.candidateStep
     ) {
-      let risk = riskAt(x, scene, items, playerY, speedMultiplier);
+      // 评估从当前位置移动到候选点的整段路线，而不是只看终点。
+      // 这会提前排除即将有下落 NPC 或游走 NPC 穿过的路线。
+      const trajectory = simulateCollisionRisk(
+        scene,
+        items,
+        speedMultiplier,
+        false,
+        x,
+      );
+      let risk = trajectory.risk + riskAt(x, scene, items, playerY, speedMultiplier) * 0.16;
       const travelSeconds = Math.abs(x - playerX) / 384;
       risk += travelSeconds * 2.2;
-      if (Math.abs(x - runtime.targetX) < CONFIG.candidateStep) risk -= 3.5;
-      candidates.push({ x, risk });
+      if (Math.abs(x - runtime.targetX) < CONFIG.candidateStep) {
+        risk -= 5;
+      } else if (now - runtime.lastTargetAt < CONFIG.targetHoldMs) {
+        risk += CONFIG.targetSwitchPenalty;
+      }
+      candidates.push({ x, risk, trajectory });
     }
 
+    const currentTrajectory = simulateCollisionRisk(
+      scene,
+      items,
+      speedMultiplier,
+      false,
+      playerX,
+    );
     candidates.push({
       x: playerX,
-      risk: currentRisk - (currentRisk < 25 ? 4 : 0),
+      risk: currentTrajectory.risk + currentRisk * 0.16 - (currentRisk < 25 ? 4 : 0),
+      trajectory: currentTrajectory,
     });
     candidates.sort((a, b) => a.risk - b.risk);
 
     runtime.currentRisk = currentRisk;
     runtime.targetX = candidates[0].x;
     runtime.targetRisk = candidates[0].risk;
-    return { ...candidates[0], speedMultiplier, redZoneEmergency: false };
+    runtime.lastPlanAt = now;
+    runtime.lastTargetAt = now;
+    runtime.cachedTarget = {
+      ...candidates[0],
+      speedMultiplier,
+      redZoneEmergency: false,
+    };
+    return runtime.cachedTarget;
   }
 
   function setDirection(player, direction) {
@@ -496,9 +545,17 @@
     let dy = 0;
 
     if (item.state === 'falling') {
-      const requestedDy = item.speed * speedMultiplier * time;
+      const fallingSpeed = Math.max(1, item.speed * speedMultiplier);
+      const requestedDy = fallingSpeed * time;
       const maximumDy = Math.max(0, groundY - baseBounds.bottom);
       dy = Math.min(requestedDy, maximumDy);
+      // NPC 落地后会开始游走。提前将这段路线纳入模型，避免角色横移到
+      // 即将被落地 NPC 占据的安全格。
+      const landingTime = maximumDy / fallingSpeed;
+      const walkingTime = Math.max(0, time - landingTime - 0.12);
+      if (walkingTime > 0) {
+        dx = 120 * (item.walkDirection || 1) * speedMultiplier * walkingTime;
+      }
     } else if (item.state === 'grounded') {
       dx = 120 * (item.walkDirection || 1) * speedMultiplier * time;
     }
@@ -506,7 +563,13 @@
     return getItemRects(item).map((rect) => translateRect(rect, dx, dy));
   }
 
-  function simulateCollisionRisk(scene, items, speedMultiplier, jumpNow) {
+  function simulateCollisionRisk(
+    scene,
+    items,
+    speedMultiplier,
+    jumpNow,
+    targetX = runtime.targetX,
+  ) {
     const player = scene.player;
     const sprite = player.sprite;
     const groundY = scene.getGroundY();
@@ -523,6 +586,8 @@
       : player.velocityY;
     let risk = 0;
     let firstCollision = Infinity;
+    let minimumGap = Infinity;
+    const redZones = getRedZoneIntervals(scene);
     const horizon = CONFIG.jumpPredictionSeconds;
     const dt = CONFIG.jumpPredictionStepSeconds;
 
@@ -530,7 +595,7 @@
       const onGround = y >= groundY - 0.5;
       const horizontalSpeed = 384 * (onGround ? 1 : 0.8);
       const horizontalStep = horizontalSpeed * dt;
-      const deltaX = runtime.targetX - x;
+      const deltaX = targetX - x;
       x += Math.sign(deltaX) * Math.min(Math.abs(deltaX), horizontalStep);
 
       const gravity = velocityY < 0 ? 2600 : 4000;
@@ -539,6 +604,11 @@
       if (y >= groundY) {
         y = groundY;
         velocityY = 0;
+      }
+
+      if (isInsideRedZone(x, redZones)) {
+        firstCollision = Math.min(firstCollision, time);
+        risk += 1_000_000_000;
       }
 
       const predictedHead = expandRect({
@@ -575,14 +645,16 @@
               rectGap(predictedHead, expandedHazard),
               rectGap(predictedBody, expandedHazard),
             );
-            if (gap < 22) {
-              risk += (22 - gap) * (horizon - time + 0.1) * 3;
+            minimumGap = Math.min(minimumGap, gap);
+            if (gap < 42) {
+              // 即使尚未相交，过近也会因为帧率和碰撞框误差变成擦碰。
+              risk += (42 - gap) * (horizon - time + 0.16) * 9;
             }
           }
         }
       }
     }
-    return { risk, firstCollision };
+    return { risk, firstCollision, minimumGap };
   }
 
   function decideJump(scene, items, speedMultiplier, redZoneEmergency) {
@@ -746,6 +818,9 @@
     releaseControls();
     runtime.scene = null;
     runtime.targetX = 800;
+    runtime.cachedTarget = null;
+    runtime.lastPlanAt = 0;
+    runtime.lastTargetAt = 0;
     runtime.evacuatingRedZone = false;
     runtime.redZoneTarget = null;
     runtime.redZoneSignature = '';
