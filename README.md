@@ -1,9 +1,6 @@
 PUBG 热点空投小游戏自动躲避脚本 2.3
 ====================================
 
-文件：
-pubg-hotdrop-auto-dodge.user.js
-
 安装：
 1. Chrome / Edge 安装 Tampermonkey（篡改猴）。
 2. 打开 Tampermonkey 管理面板，选择“添加新脚本”。
