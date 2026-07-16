@@ -20,12 +20,26 @@ PUBG Hotdrop 脚本说明
 - 设置会持久化，场景重建后自动重新捕获并应用。
 - 面板位于右上角。
 
-这是两个独立方案，按需要选择其中一个安装，不是合并脚本。
+三、任务专用
+文件：pubg-paradrop-task-runner.user.js
+- 这是为完成任务单独编写的第三版，不包含敌人/空投落点和方向设置。
+- 面板只保留关闭碰撞、开启碰撞、运行速度和自动结算。
+- 自动结算分数可在数字输入框中手动填写，默认 19500。
+- 每局开局自动开启 NPC 碰撞，并主动接触一个 NPC，使生命从 3 降到 2。
+- 完成一次受伤后自动关闭 NPC 与红区碰撞。
+- 开局等待受伤期间会屏蔽红区致命伤，保证扣血来自 NPC。
+- 分数达到 300 后，角色自动追踪并拾取 +100 分空投。
+- 达到自动结算分数时先恢复碰撞，再执行结算。
+- 正式任务建议使用 1x，加速可能导致成绩不上报。
+- 面板位于页面顶部中央。
+
+这是三个独立方案，按需要选择其中一个安装，不要同时启用多个版本。
 
 本地实验：
 1. 在仓库目录运行：python -m http.server 8765
 2. 普通：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html
 3. 对抗：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=adversarial
 4. 无碰撞 1x：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=invincible&speed=1
+5. 任务专用版：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?controller=task&mode=normal&speed=1&finish=off
 
 本地实验使用假 session，数据接口指向不可用的本地地址，不提交官方成绩。
