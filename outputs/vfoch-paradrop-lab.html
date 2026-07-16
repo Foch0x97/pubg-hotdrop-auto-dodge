@@ -61,7 +61,12 @@
       },
     };
   </script>
-  <script src="./pubg-paradrop-runtime-control.user.js"></script>
+  <script>
+    const controllerScript = params.get('controller') === 'task'
+      ? './pubg-paradrop-task-runner.user.js'
+      : './pubg-paradrop-runtime-control.user.js';
+    document.write(`<script src="${controllerScript}"><\/script>`);
+  </script>
   <script src="./paradrop-game.lab.js"></script>
 </head>
 <body>
