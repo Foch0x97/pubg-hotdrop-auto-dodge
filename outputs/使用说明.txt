@@ -1,0 +1,29 @@
+PUBG Hotdrop 脚本说明
+====================
+
+一、MPC 自动躲避
+文件：pubg-hotdrop-auto-dodge.user.js
+- 只负责预测和自动操作，不修改碰撞、速度、生命或生成参数。
+- F8 开启/暂停，F9 重新捕获场景。
+- 面板位于左上角。
+
+二、Phaser 运行时控制
+文件：pubg-paradrop-runtime-control.user.js
+- 碰撞开关同时控制 NPC 与红区伤害。
+- 默认 1x；加速可能导致成绩不上报。
+- 分数超过 20000 也可能不上报，默认 19500 分自动结算。
+- 可选 0.5x、1x、2x、3x、5x 速度。
+- 自动结算可选关闭、18000、19000、19500 分。
+- 可修改空投落点、敌人落点和敌人方向。
+- 空投没有水平移动方向，因此只能修改落点。
+- 面板位于右上角。
+
+这是两个独立方案，按需要选择其中一个安装，不是合并脚本。
+
+本地实验：
+1. 在仓库目录运行：python -m http.server 8765
+2. 普通：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html
+3. 对抗：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=adversarial
+4. 无碰撞 1x：http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=invincible&speed=1
+
+本地实验使用假 session，数据接口指向不可用的本地地址，不提交官方成绩。

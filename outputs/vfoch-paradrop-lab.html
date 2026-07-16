@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VFoch Paradrop Lab</title>
+  <style>
+    html, body, #lab { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+  </style>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const mode = params.get('mode') || 'normal';
+    let enemyIndex = 0;
+
+    function clampX(value, width) {
+      return Math.max(50, Math.min(width - 50, value));
+    }
+
+    function resolveDropX(placement, defaultX, width, playerX) {
+      switch (placement) {
+        case 'player': return clampX(playerX, width);
+        case 'left': return 70;
+        case 'center': return width / 2;
+        case 'right': return width - 70;
+        case 'far': return playerX < width / 2 ? width - 70 : 70;
+        case 'near': {
+          const side = enemyIndex++ % 2 === 0 ? -1 : 1;
+          return clampX(playerX + side * 150, width);
+        }
+        default: return defaultX;
+      }
+    }
+
+    window.__VFOCH_GAME_LAB__ = {
+      enginePatched: true,
+      collisionDisabled: mode === 'invincible',
+      speedMultiplier: Number(params.get('speed')) || 1,
+      autoFinishScore: Number(params.get('finish')) || 19500,
+      autoFinishEnabled: params.get('finish') !== 'off',
+      autoFinishTriggered: false,
+      invincibleMs: mode === 'invincible' ? 600000 : 2500,
+      airdropPlacement: mode === 'airdrop' ? 'player' : 'original',
+      enemyPlacement: mode === 'adversarial' ? 'near' : 'original',
+      enemyDirection: mode === 'adversarial' ? 'toward' : 'original',
+      scene: null,
+      nextEnemy({ defaultX, width, playerX }) {
+        const x = resolveDropX(this.enemyPlacement, defaultX, width, playerX);
+        const toward = playerX >= x ? 1 : -1;
+        let direction;
+        switch (this.enemyDirection) {
+          case 'toward': direction = toward; break;
+          case 'away': direction = -toward; break;
+          case 'left': direction = -1; break;
+          case 'right': direction = 1; break;
+          default: direction = undefined;
+        }
+        return { x, direction };
+      },
+      nextAirdrop({ defaultX, width, playerX }) {
+        return { x: resolveDropX(this.airdropPlacement, defaultX, width, playerX) };
+      },
+    };
+  </script>
+  <script src="./pubg-paradrop-runtime-control.user.js"></script>
+  <script src="./paradrop-game.lab.js"></script>
+</head>
+<body>
+  <div id="lab"></div>
+  <script>
+    ParadropGame.init({
+      container: document.getElementById('lab'),
+      locale: 'zh-CN',
+      gameParams: {
+        assetBaseUrl: 'https://pubgwebgame-sdk-test.sisyphusbot.com/',
+        gameDataApiBaseUrl: 'http://127.0.0.1:9',
+      },
+      callbacks: {
+        onStart() {
+          setTimeout(() => ParadropGame.beginRound({
+            sessionToken: `vfoch-local-lab-${Date.now()}`,
+            attemptIndex: 0,
+          }), 0);
+        },
+        onError(error) { console.warn('[VFoch Lab]', error); },
+        onResult() { return { hostAccepted: true }; },
+      },
+    });
+  </script>
+</body>
+</html>

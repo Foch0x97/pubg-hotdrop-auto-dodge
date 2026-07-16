@@ -1,41 +1,67 @@
-PUBG 热点空投小游戏自动躲避脚本 2.3
-====================================
+# PUBG Hotdrop Auto Dodge
 
-安装：
-1. Chrome / Edge 安装 Tampermonkey（篡改猴）。
-2. 打开 Tampermonkey 管理面板，选择“添加新脚本”。
-3. 删除编辑器原内容，把 pubg-hotdrop-auto-dodge.user.js 全部复制进去并保存。
-4. 打开：
-   https://pubg.com/zh-cn/events/hotsummerdrop
-5. 登录并正常进入小游戏。右上角出现“VFoch Auto Dodge”即已加载。
+VFoch Network 为 PUBG Hot Summer Drop 活动小游戏编写的两套独立脚本：MPC 自动躲避与 Phaser 运行时控制。
 
-快捷键：
-F8  开启或暂停自动躲避
-F9  重新采集背景并校准角色位置
+## 脚本区别
 
-工作方式：
-- 游戏使用 Phaser 引擎；
-- 脚本会在首个 NPC 生成时捕获实际游戏场景；
-- 直接读取 player、fallingItems、redZones 等对象；
-- 根据 NPC 坐标、下落速度、行走方向和红区倒计时预测危险；
-- 红区是一击致命，因此红区撤离拥有绝对最高优先级；
-- 进入红区后会锁定最近安全出口，暂停捡空投和普通躲避决策；
-- 红区撤离期间禁止跳跃，保持最高水平移动速度；
-- 跳跃不再采用固定的一段、二段时序；
-- 每一帧分别模拟“不跳”和“现在跳”未来约1秒的碰撞轨迹；
-- 只有跳跃能明显降低碰撞概率或推迟碰撞时才消耗一次跳跃；
-- 第二段跳是独立的避险机会，可与第一段间隔使用，不会固定连按；
-- 如果跳起后会撞上下落 NPC，预测结果会阻止这次跳跃；
-- 自动控制 Phaser 的左右方向键和跳跃键；
-- 不修改分数、生命值、票券或服务器请求。
+| 文件 | 用途 | 默认行为 |
+| --- | --- | --- |
+| [`pubg-hotdrop-auto-dodge.user.js`](./outputs/pubg-hotdrop-auto-dodge.user.js) | MPC 自动躲避 | 预测 NPC、跳跃轨迹和红区，自动移动；不修改碰撞、速度或生成参数 |
+| [`pubg-paradrop-runtime-control.user.js`](./outputs/pubg-paradrop-runtime-control.user.js) | Phaser 运行时控制 | 关闭碰撞、`1x` 速度、`19500` 分自动结算；可修改空投/敌人落点和敌人方向 |
 
-建议：
-- 安装或更新脚本后刷新活动页面；
-- 正常打开小游戏；未点击开始时脚本不会消耗票券；
-- 开始后首个 NPC 出现时会显示“已捕获 Phaser 游戏对象”；
-- 如果没有自动捕获，按 F9；
-- 绿色线表示脚本选择的移动目标；
-- 红框为 NPC 碰撞框，黄色框为空投箱，红色区域为红区。
+这是两个独立方案，不是整合脚本。根据需要选择其中一种：要保留原始碰撞规则就使用 MPC 自动躲避版；要直接控制碰撞和游戏参数就使用运行时控制版。
 
-说明：
-该页面活动须知明确写有宏、爬虫和未授权程序相关限制，活动分数及奖励以服务器审核结果为准。
+## 安装
+
+1. Chrome 或 Edge 安装 Tampermonkey。
+2. 在 Tampermonkey 中新建脚本。
+3. 选择上述一个 `.user.js` 文件，粘贴并保存。
+4. 打开 <https://pubg.com/zh-cn/events/hotsummerdrop>，登录并进入小游戏。
+
+也可在 Chrome DevTools 的 `Sources -> Snippets` 中直接运行脚本内容。
+
+## MPC 自动躲避
+
+- 同时模拟保持、左右移动、移动后停止和移动后反向等控制序列。
+- 每 `80ms` 重规划一次，空投不参与路线选择，生存优先。
+- 预判下落 NPC、落地行走方向、角色一段跳和独立二段跳。
+- 红区撤离拥有最高优先级，撤离时禁止跳跃并保留水平速度。
+- `F8`：开启或暂停自动躲避。
+- `F9`：重新捕获 Phaser 场景。
+
+## 运行时控制
+
+- 正式成绩使用 `1x`；加速可能导致成绩不上报。
+- 分数超过 `20000` 也可能不上报，因此默认在 `19500` 分自动结算。
+- 碰撞：关闭或恢复 NPC 接触与红区伤害。
+- 速度：`0.5x`、`1x`、`2x`、`3x`、`5x`。
+- 自动结算：关闭、`18000`、`19000`、`19500` 分。
+- 空投落点：原始、角色位置、远离角色、左侧、中央、右侧。
+- 敌人落点：原始、角色两侧 `150px`、角色位置、远离角色、左侧、中央、右侧。
+- 敌人方向：原始、朝向角色、背离角色、固定向左、固定向右。
+- 空投在原游戏中没有水平移动方向，因此只提供落点控制。
+
+## 本地实验
+
+本地实验版不消耗活动次数，也不提交官方成绩：
+
+```cmd
+python -m http.server 8765
+```
+
+- 普通模式：<http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html>
+- 对抗模式：<http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=adversarial>
+- 无碰撞 `1x`：<http://127.0.0.1:8765/outputs/vfoch-paradrop-lab.html?mode=invincible&speed=1>
+
+本地修改版引擎为 [`paradrop-game.lab.js`](./outputs/paradrop-game.lab.js)。
+
+## 文件
+
+```text
+outputs/
+  pubg-hotdrop-auto-dodge.user.js
+  pubg-paradrop-runtime-control.user.js
+  vfoch-paradrop-lab.html
+  paradrop-game.lab.js
+  使用说明.txt
+```
