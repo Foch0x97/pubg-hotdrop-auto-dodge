@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch）
 // @namespace    VFoch Network
-// @version      1.0.1
+// @version      1.0.2
 // @description  任务流程控制：开局受伤一次、关闭碰撞、自动拾取空投并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -22,6 +22,8 @@
   const SPEEDS = [0.5, 1, 2, 3, 5];
   const DEFAULT_FINISH_SCORE = 19500;
   const AUTO_PICKUP_SCORE = 300;
+  const NORMAL_WALK_SPEED = 384;
+  const PLAYER_TARGET_SMOOTHING = 0.2;
 
   function readSetting(key, fallback) {
     try {
@@ -213,10 +215,17 @@
     );
   }
 
-  function updateAutoPickup(scene) {
+  function stopPickupWalk(scene) {
+    if (scene?.player && Number.isFinite(getPlayerX(scene))) {
+      scene.player.targetX = getPlayerX(scene);
+    }
+  }
+
+  function updateAutoPickup(scene, rawDelta = 0) {
     const score = getScore(scene);
     if (score < AUTO_PICKUP_SCORE || scene.isGameOver || runtime.autoFinishTriggered) {
       runtime.pickupTarget = null;
+      stopPickupWalk(scene);
       return;
     }
     if (!runtime.autoPickupAnnounced) {
@@ -228,10 +237,26 @@
       ? runtime.pickupTarget
       : findPickupTarget(scene);
     runtime.pickupTarget = target;
-    if (!target) return;
+    if (!target) {
+      stopPickupWalk(scene);
+      return;
+    }
     const width = Number(scene.scale?.width) || 1600;
-    const x = Math.max(48, Math.min(width - 48, Number(target.go.x) || width / 2));
-    scene.player.targetX = x;
+    const targetX = Math.max(48, Math.min(width - 48, Number(target.go.x) || width / 2));
+    const playerX = getPlayerX(scene);
+    const distance = targetX - playerX;
+    const delta = Math.max(0, Math.min(100, Number(rawDelta) || 0));
+
+    // The game eases 20% toward targetX every update.  Keep only a small lead
+    // based on the unscaled frame time, so pickup walking remains 1x even when
+    // the round speed is set higher.
+    if (delta <= 0 || Math.abs(distance) <= 1) {
+      if (Math.abs(distance) <= 1) scene.player.targetX = targetX;
+      return;
+    }
+    const normalStep = NORMAL_WALK_SPEED * (delta / 1000);
+    const lead = Math.min(Math.abs(distance), normalStep / PLAYER_TARGET_SMOOTHING);
+    scene.player.targetX = Math.max(48, Math.min(width - 48, playerX + Math.sign(distance) * lead));
   }
 
   function triggerAutoFinish(scene) {
@@ -251,12 +276,12 @@
     syncPanel();
   }
 
-  function runTaskCycle() {
+  function runTaskCycle(rawDelta = 0) {
     const scene = runtime.scene;
     if (!isGameScene(scene)) return;
     prepareRound(scene);
     updateOpeningHit(scene);
-    updateAutoPickup(scene);
+    updateAutoPickup(scene, rawDelta);
     triggerAutoFinish(scene);
     applyCollisionMode();
   }
@@ -269,12 +294,12 @@
 
     runtime.originalSceneUpdate = current;
     runtime.wrappedSceneUpdate = function vfochTaskSceneUpdate(time, delta) {
-      runTaskCycle();
+      runTaskCycle(delta);
       const adjustedDelta = runtime.scene === scene && !control.enginePatched
         ? delta * control.speedMultiplier
         : delta;
       const result = Reflect.apply(current, this, [time, adjustedDelta]);
-      runTaskCycle();
+      runTaskCycle(0);
       return result;
     };
     Object.defineProperty(runtime.wrappedSceneUpdate, '__vfochTaskWrapped', { value: true });
