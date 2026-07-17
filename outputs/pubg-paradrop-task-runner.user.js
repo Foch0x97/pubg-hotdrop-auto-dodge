@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch）
 // @namespace    VFoch Network
-// @version      1.0.4
+// @version      1.0.5
 // @description  任务流程控制：开局受伤一次、关闭碰撞、自动拾取空投并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -19,7 +19,6 @@
   if (pageWindow.VFochParadropTask) return;
 
   const STORAGE_PREFIX = 'vfoch-paradrop-task:';
-  const SPEEDS = [0.5, 1, 2, 3, 5];
   const DEFAULT_FINISH_SCORE = 19500;
   const AUTO_PICKUP_SCORE = 300;
   const NORMAL_WALK_SPEED = 384;
@@ -44,11 +43,6 @@
     }
   }
 
-  function validSpeed(value) {
-    const speed = Number(value);
-    return SPEEDS.includes(speed) ? speed : 1;
-  }
-
   function validFinishScore(value) {
     const score = Math.round(Number(value));
     return Number.isFinite(score) && score >= 1 ? score : DEFAULT_FINISH_SCORE;
@@ -57,10 +51,8 @@
   const labControl = pageWindow.__VFOCH_GAME_LAB__;
   const control = {
     collisionDisabled: true,
-    speedMultiplier: validSpeed(labControl?.speedMultiplier ?? readSetting('speedMultiplier', 1)),
     autoFinishEnabled: Boolean(labControl?.autoFinishEnabled ?? readSetting('autoFinishEnabled', true)),
     autoFinishScore: validFinishScore(labControl?.autoFinishScore ?? readSetting('autoFinishScore', DEFAULT_FINISH_SCORE)),
-    enginePatched: Boolean(labControl?.enginePatched),
   };
 
   const runtime = {
@@ -84,7 +76,6 @@
   };
 
   function saveSettings() {
-    writeSetting('speedMultiplier', control.speedMultiplier);
     writeSetting('autoFinishEnabled', control.autoFinishEnabled);
     writeSetting('autoFinishScore', control.autoFinishScore);
   }
@@ -298,10 +289,7 @@
     runtime.originalSceneUpdate = current;
     runtime.wrappedSceneUpdate = function vfochTaskSceneUpdate(time, delta) {
       runTaskCycle(delta);
-      const adjustedDelta = runtime.scene === scene && !control.enginePatched
-        ? delta * control.speedMultiplier
-        : delta;
-      const result = Reflect.apply(current, this, [time, adjustedDelta]);
+      const result = Reflect.apply(current, this, [time, delta]);
       runTaskCycle(0);
       return result;
     };
@@ -314,10 +302,9 @@
     const scene = runtime.scene;
     if (!isGameScene(scene)) return;
     installSceneUpdate(scene);
-    if (control.enginePatched) return;
-    if (scene.time) scene.time.timeScale = control.speedMultiplier;
-    if (scene.tweens) scene.tweens.timeScale = control.speedMultiplier;
-    if (scene.anims) scene.anims.globalTimeScale = control.speedMultiplier;
+    if (scene.time) scene.time.timeScale = 1;
+    if (scene.tweens) scene.tweens.timeScale = 1;
+    if (scene.anims) scene.anims.globalTimeScale = 1;
   }
 
   function restoreArrayPush() {
@@ -440,7 +427,6 @@
     if (!elements) return;
     elements.collisionOff.dataset.active = String(control.collisionDisabled);
     elements.collisionOn.dataset.active = String(!control.collisionDisabled);
-    elements.speed.value = String(control.speedMultiplier);
     elements.autoFinish.checked = control.autoFinishEnabled;
     if (document.activeElement !== elements.finishScore) {
       elements.finishScore.value = String(control.autoFinishScore);
@@ -474,7 +460,6 @@
           <button type="button" data-collision-off>关闭碰撞</button>
           <button type="button" data-collision-on>开启碰撞</button>
         </div>
-        <label class="row"><span>运行速度</span><select data-speed>${SPEEDS.map((speed) => `<option value="${speed}">${speed}x</option>`).join('')}</select></label>
         <label class="row"><span>自动结算</span><span class="finish"><input type="number" min="1" max="1000000" step="100" inputmode="numeric" data-finish-score><span class="toggle"><input type="checkbox" data-auto-finish>启用</span></span></label>
         <div class="status" data-status>等待游戏场景...</div>
       </section>`;
@@ -485,7 +470,6 @@
     runtime.elements = {
       collisionOff: shadow.querySelector('[data-collision-off]'),
       collisionOn: shadow.querySelector('[data-collision-on]'),
-      speed: shadow.querySelector('[data-speed]'),
       finishScore: shadow.querySelector('[data-finish-score]'),
       autoFinish: shadow.querySelector('[data-auto-finish]'),
       status: shadow.querySelector('[data-status]'),
@@ -493,12 +477,6 @@
 
     runtime.elements.collisionOff.addEventListener('click', () => setCollisionDisabled(true));
     runtime.elements.collisionOn.addEventListener('click', () => setCollisionDisabled(false));
-    runtime.elements.speed.addEventListener('change', (event) => {
-      control.speedMultiplier = validSpeed(event.target.value);
-      saveSettings();
-      applyGameSpeed();
-      syncPanel();
-    });
     runtime.elements.finishScore.addEventListener('change', (event) => {
       control.autoFinishScore = validFinishScore(event.target.value);
       runtime.autoFinishTriggered = false;
@@ -522,12 +500,6 @@
     apply: runTaskCycle,
     reset: clearSceneCapture,
     setCollisionDisabled,
-    setSpeed(value) {
-      control.speedMultiplier = validSpeed(value);
-      saveSettings();
-      applyGameSpeed();
-      syncPanel();
-    },
     setAutoFinishScore(value) {
       control.autoFinishScore = validFinishScore(value);
       runtime.autoFinishTriggered = false;
