@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch，正常步行备用）
 // @namespace    VFoch Network
-// @version      1.0.5
+// @version      1.0.6
 // @description  备用版：空投按正常走路速度追踪；开局受伤一次、关闭碰撞并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -74,6 +74,8 @@
     sdkWrapped: false,
     lastTelemetryAt: 0,
   };
+  const originalNpcHit = new WeakMap();
+  const originalZoneHitCheck = new WeakMap();
 
   function saveSettings() {
     writeSetting('autoFinishEnabled', control.autoFinishEnabled);
@@ -112,9 +114,42 @@
     return Number(scene?.player?.getX?.() ?? scene?.player?.sprite?.x ?? 0);
   }
 
+  function installCollisionCompatibility(scene) {
+    const player = scene?.player;
+    if (player && typeof player.takeNpcHit === 'function' && !originalNpcHit.has(player)) {
+      const original = player.takeNpcHit;
+      const wrapped = function vfochTakeNpcHit(...args) {
+        if (runtime.scene === scene && control.collisionDisabled) return true;
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        player.takeNpcHit = wrapped;
+        if (player.takeNpcHit === wrapped) originalNpcHit.set(player, original);
+      } catch {
+        // Older builds use the dependency flags below instead.
+      }
+    }
+
+    const zones = scene?.redZones;
+    if (zones && typeof zones.canPlayerTakeZoneHit === 'function' && !originalZoneHitCheck.has(zones)) {
+      const original = zones.canPlayerTakeZoneHit;
+      const wrapped = function vfochCanPlayerTakeZoneHit(...args) {
+        if (runtime.scene === scene && (control.collisionDisabled || runtime.phase === 'opening-hit')) return false;
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        zones.canPlayerTakeZoneHit = wrapped;
+        if (zones.canPlayerTakeZoneHit === wrapped) originalZoneHitCheck.set(zones, original);
+      } catch {
+        // Older builds use the dependency flags below instead.
+      }
+    }
+  }
+
   function applyCollisionMode() {
     const scene = runtime.scene;
     if (!isGameScene(scene)) return;
+    installCollisionCompatibility(scene);
     const itemDeps = scene.fallingItems?.deps;
     const zoneDeps = scene.redZones?.deps;
     if (itemDeps && 'ignorePlayerItemCollisions' in itemDeps) {
