@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch）
 // @namespace    VFoch Network
-// @version      1.0.3
+// @version      1.0.4
 // @description  任务流程控制：开局受伤一次、关闭碰撞、自动拾取空投并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
