@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 运行时控制（VFoch）
 // @namespace    VFoch Network
-// @version      1.1.0
+// @version      1.1.1
 // @description  Phaser 运行时调试：碰撞、速度、自动结算、空投/敌人落点和敌人方向
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -85,6 +85,8 @@
     sdkWrapped: false,
     lastTelemetryAt: 0,
   };
+  const originalNpcHit = new WeakMap();
+  const originalZoneHitCheck = new WeakMap();
 
   const airdropOriginalX = new WeakMap();
   const airdropControlledX = new WeakMap();
@@ -168,9 +170,42 @@
     }
   }
 
+  function installCollisionCompatibility(scene) {
+    const player = scene?.player;
+    if (player && typeof player.takeNpcHit === 'function' && !originalNpcHit.has(player)) {
+      const original = player.takeNpcHit;
+      const wrapped = function vfochTakeNpcHit(...args) {
+        if (runtime.scene === scene && control.collisionDisabled) return true;
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        player.takeNpcHit = wrapped;
+        if (player.takeNpcHit === wrapped) originalNpcHit.set(player, original);
+      } catch {
+        // Older builds use the dependency flags below instead.
+      }
+    }
+
+    const zones = scene?.redZones;
+    if (zones && typeof zones.canPlayerTakeZoneHit === 'function' && !originalZoneHitCheck.has(zones)) {
+      const original = zones.canPlayerTakeZoneHit;
+      const wrapped = function vfochCanPlayerTakeZoneHit(...args) {
+        if (runtime.scene === scene && control.collisionDisabled) return false;
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        zones.canPlayerTakeZoneHit = wrapped;
+        if (zones.canPlayerTakeZoneHit === wrapped) originalZoneHitCheck.set(zones, original);
+      } catch {
+        // Older builds use the dependency flags below instead.
+      }
+    }
+  }
+
   function applyCollisionMode() {
     const scene = runtime.scene;
     if (!isGameScene(scene)) return;
+    installCollisionCompatibility(scene);
     const itemDeps = scene.fallingItems?.deps;
     const zoneDeps = scene.redZones?.deps;
     if (itemDeps && 'ignorePlayerItemCollisions' in itemDeps) {
