@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch）
 // @namespace    VFoch Network
-// @version      1.0.2
+// @version      1.0.3
 // @description  任务流程控制：开局受伤一次、关闭碰撞、自动拾取空投并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -224,8 +224,9 @@
   function updateAutoPickup(scene, rawDelta = 0) {
     const score = getScore(scene);
     if (score < AUTO_PICKUP_SCORE || scene.isGameOver || runtime.autoFinishTriggered) {
+      const hadPickupTarget = runtime.pickupTarget;
       runtime.pickupTarget = null;
-      stopPickupWalk(scene);
+      if (hadPickupTarget) stopPickupWalk(scene);
       return;
     }
     if (!runtime.autoPickupAnnounced) {
@@ -233,12 +234,13 @@
       console.info('[VFoch Paradrop Task] 分数达到 300，已启用角色自动拾取空投');
     }
 
-    const target = isActivePickup(scene, runtime.pickupTarget)
+    const previousTarget = runtime.pickupTarget;
+    const target = isActivePickup(scene, previousTarget)
       ? runtime.pickupTarget
       : findPickupTarget(scene);
     runtime.pickupTarget = target;
     if (!target) {
-      stopPickupWalk(scene);
+      if (previousTarget) stopPickupWalk(scene);
       return;
     }
     const width = Number(scene.scale?.width) || 1600;
@@ -270,6 +272,7 @@
     runtime.autoFinishTriggered = true;
     runtime.phase = 'finishing';
     runtime.pickupTarget = null;
+    stopPickupWalk(scene);
     control.collisionDisabled = false;
     applyCollisionMode();
     console.info(`[VFoch Paradrop Task] 达到 ${control.autoFinishScore} 分，已开启碰撞，等待自然触碰死亡`);
