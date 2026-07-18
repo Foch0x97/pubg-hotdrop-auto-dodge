@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PUBG Paradrop 任务专用（VFoch，正常步行备用）
 // @namespace    VFoch Network
-// @version      1.0.6
+// @version      1.0.7
 // @description  备用版：空投按正常走路速度追踪；开局受伤一次、关闭碰撞并按自定义分数结算
 // @author       VFoch Network
 // @match        https://pubg.com/*/events/hotsummerdrop*
@@ -75,7 +75,9 @@
     lastTelemetryAt: 0,
   };
   const originalNpcHit = new WeakMap();
+  const originalTryNpcHit = new WeakMap();
   const originalZoneHitCheck = new WeakMap();
+  const originalShouldApplyZoneDamage = new WeakMap();
 
   function saveSettings() {
     writeSetting('autoFinishEnabled', control.autoFinishEnabled);
@@ -130,6 +132,20 @@
       }
     }
 
+    if (player && typeof player.tryTakeNpcHit === 'function' && !originalTryNpcHit.has(player)) {
+      const original = player.tryTakeNpcHit;
+      const wrapped = function vfochTryTakeNpcHit(...args) {
+        if (runtime.scene === scene && control.collisionDisabled) return 'blocked';
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        player.tryTakeNpcHit = wrapped;
+        if (player.tryTakeNpcHit === wrapped) originalTryNpcHit.set(player, original);
+      } catch {
+        // Keep the legacy hook for prior game builds.
+      }
+    }
+
     const zones = scene?.redZones;
     if (zones && typeof zones.canPlayerTakeZoneHit === 'function' && !originalZoneHitCheck.has(zones)) {
       const original = zones.canPlayerTakeZoneHit;
@@ -142,6 +158,20 @@
         if (zones.canPlayerTakeZoneHit === wrapped) originalZoneHitCheck.set(zones, original);
       } catch {
         // Older builds use the dependency flags below instead.
+      }
+    }
+
+    if (player && typeof player.shouldApplyZoneDamage === 'function' && !originalShouldApplyZoneDamage.has(player)) {
+      const original = player.shouldApplyZoneDamage;
+      const wrapped = function vfochShouldApplyZoneDamage(...args) {
+        if (runtime.scene === scene && (control.collisionDisabled || runtime.phase === 'opening-hit')) return false;
+        return Reflect.apply(original, this, args);
+      };
+      try {
+        player.shouldApplyZoneDamage = wrapped;
+        if (player.shouldApplyZoneDamage === wrapped) originalShouldApplyZoneDamage.set(player, original);
+      } catch {
+        // Keep the legacy hook for prior game builds.
       }
     }
   }
